@@ -542,10 +542,8 @@ def find_best_match_groups(ad0,ad1,group_names=["leiden_1","leiden_1"], in_place
         ad1.obs["matched_"+group_names[0]] = ""
     
         for mm in mutual_matches:
-            print(mm)
             
             match_mask0 = ad0.obs[group_names[0]]==g_o_m_0.columns[mm]
-            print(match_mask0.sum())
             ad0.obs.loc[match_mask0,["matched_"+group_names[0]] ] = "matched_"+group_names[0]+"_"+str(mm)
         
             match_mask1 = ad1.obs[group_names[1]]==g_o_m_1.columns[mutual_matches[mm]]
