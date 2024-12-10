@@ -385,13 +385,11 @@ class SpatialCompare():
         save: whether to save the intermediate and final results. Bool, default true
         nn_dist: distance cutoff for identifying likely same cell between segmentations. float, default 2.5 (um)
         min_transcripts: minimum number of transcripts needed to define a cell too low quality to be considered for mapping
-        savepath: path to which you'd like to save your results. Required if using anndata objects and save = True, otherwise defaults to seg_b_path
+        savepath: path to which you'd like to save your results. 
         OUTPUTS:
         seg_comp_df: dataframe with unique index describing cell spatial locations (x and y), segmentation identifier, low quality cell identifier, mutual matches, and putative doublets. 
         """
         
-        if not savepath:
-            savepath=seg_b_path
         #grab base comparison df
         seg_comp_df = get_segmentation_data(bc, self.ad_0, self.ad_1, self.data_names[0], self.data_names[1], save, savepath, reuse_saved, min_transcripts)
         
