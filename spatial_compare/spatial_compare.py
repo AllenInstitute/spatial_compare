@@ -716,9 +716,9 @@ class SpatialCompare:
                 + self.data_names[0]
                 + "_"
                 + self.data_names[1]
-                + ".html"
+                + ".png"
             )
-            fig.write_html(filepath)
+            fig.write_image(filepath)
         fig.show()
         return fig, unknown_unmatched_cells, filepath
 
