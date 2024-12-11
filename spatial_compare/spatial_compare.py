@@ -10,6 +10,7 @@ from scipy.spatial import cKDTree
 from pathlib import Path
 import plotly.graph_objs as go
 from matplotlib.ticker import FormatStrFormatter
+from sklearn.metrics import adjusted_rand_score
 import warnings
 
 from spatial_compare.utils import grouped_obs_mean
@@ -654,6 +655,32 @@ class SpatialCompare:
             seg_comp_df.to_csv(result_path, index=True)
             print("Saved to: " + result_path)
         return seg_comp_df
+    
+    def returnARI(sc, seg_comp_df, seg_name_a, seg_name_b, annotation_key='annotations'):
+        # Ensure seg_comp_df exists and has a 'source' column
+        seg_comp_df['annotations'] = None  # Initialize the column with None or NaN
+
+        annotations_a = sc.ad_0.obs[annotation_key].tolist()
+        annotations_b = sc.ad_1.obs[annotation_key].tolist()
+
+        # Assign annotations based on the source
+        seg_comp_df.loc[seg_comp_df['source'] == seg_name_a, 'annotations'] = annotations_a
+        seg_comp_df.loc[seg_comp_df['source'] == seg_name_b, 'annotations'] = annotations_b
+
+        high_q_b_cells = seg_b_df[seg_b_df['low_quality_cells']==False]
+        matched_indices = high_q_b_cells.iloc[:,4].dropna().copy()
+
+        labels_a = []
+        labels_b = []
+
+        for index, value in matched_indices.items():
+            labels_a.append(str(seg_comp_df.loc[index]['annotations']))
+            labels_b.append(str(seg_comp_df.loc[value]['annotations']))
+
+        ari = adjusted_rand_score(labels_a, labels_b)
+        print(f"Adjusted Rand Index: {ari}")
+        
+        return ari
 
     def generate_sankey_diagram(
         self,
