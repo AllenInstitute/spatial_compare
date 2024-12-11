@@ -3,6 +3,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.spatial import distance
+from sklearn.metrics import adjusted_rand_score
 
 
 def grouped_obs_mean(adata, group_key, layer=None, gene_symbols=None):
@@ -378,3 +380,62 @@ def compare_reference_and_spatial(
     reference_anndata.obs[target_obs_key] = (
         scale_factor * reference_anndata.obs[target_obs_key]
     )
+
+# only works if the user has consistent annotations between the two anndatas
+def returnARI(sc, seg_comp_df, seg_name_a, seg_name_b, annotation_key='annotations'):
+    seg_comp_df['annotations'] = None  # Initialize the column with None or NaN
+
+    # extract the annotations from the anndatas
+    annotations_a = sc.ad_0.obs[annotation_key].tolist()
+    annotations_b = sc.ad_1.obs[annotation_key].tolist()
+
+    # Assign annotations based on the source
+    seg_comp_df.loc[seg_comp_df['source'] == seg_name_a, 'annotations'] = annotations_a
+    seg_comp_df.loc[seg_comp_df['source'] == seg_name_b, 'annotations'] = annotations_b
+
+    # find all the mutually matched cells
+    seg_b_df = seg_comp_df[seg_comp_df['source']==seg_name_b]
+    high_q_b_cells = seg_b_df[seg_b_df['low_quality_cells']==False]
+    matched_indices = high_q_b_cells.iloc[:,4].dropna().copy()
+
+    # create the label lists of the matched cells
+    labels_a = []
+    labels_b = []
+    for index, value in matched_indices.items():
+        labels_a.append(str(seg_comp_df.loc[index]['annotations']))
+        labels_b.append(str(seg_comp_df.loc[value]['annotations']))
+
+    # calculate the ARI and return it
+    ari = adjusted_rand_score(labels_a, labels_b)
+    print(f"Adjusted Rand Index: {ari}")
+    return ari
+
+def get_normalized_Hausdorff(seg_comp_df, seg_name_a, seg_name_b):
+    coords_a = seg_comp_df[seg_comp_df['source']==seg_name_a]
+    coords_b = seg_comp_df[seg_comp_df['source']==seg_name_b]
+
+    plt.scatter(coords_a['center_x'], coords_a['center_y'], color='blue')
+    plt.scatter(coords_b['center_x'], coords_b['center_y'], color='red')
+    plt.show()
+
+    x1 = coords_a['center_x'].to_numpy()
+    y1 = coords_a['center_y'].to_numpy()
+    x2 = coords_b['center_x'].to_numpy()
+    y2 = coords_b['center_y'].to_numpy()
+
+    # Calculate range considering the axis
+    x_coords = np.concatenate((x1, x2))
+    y_coords = np.concatenate((y1, y2))
+    x_data_range = np.max(x_coords) - np.min(x_coords)
+    y_data_range = np.max(y_coords) - np.min(y_coords)
+
+    average_data_range = (x_data_range+y_data_range)/2
+    print(f"Average data range: {average_data_range}")
+
+    # Calculate Hausdorff distance
+    points1 = np.column_stack((x1, y1))
+    points2 = np.column_stack((x2, y2))
+    hausdorff_dist = distance.directed_hausdorff(points1, points2)[0]
+    print(f"Hausdorff Distance: {hausdorff_dist}")
+    print(f"Hausdorff Distance normalized to range (%): {(hausdorff_dist/average_data_range)*100}")
+    return ((hausdorff_dist/average_data_range)*100)

@@ -6,13 +6,14 @@ import pandas as pd
 import scanpy as sc
 import seaborn as sns
 from scipy import sparse
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree, distance
 from pathlib import Path
 import plotly.graph_objs as go
 from matplotlib.ticker import FormatStrFormatter
+from sklearn.metrics import adjusted_rand_score
 import warnings
 
-from spatial_compare.utils import grouped_obs_mean
+from spatial_compare.utils import grouped_obs_mean, returnARI, get_normalized_Hausdorff
 
 
 DEFAULT_DATA_NAMES = ["Data 0", "Data 1"]
