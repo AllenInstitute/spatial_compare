@@ -55,7 +55,7 @@ def spatial_detection_scores(
     query_name: str = "query data",
     comparison_column="transcript_counts",
     category="supercluster_name",
-    n_bins=50,
+    bin_size=100,
     in_place=True,
     non_spatial=False,
 ):
@@ -68,7 +68,7 @@ def spatial_detection_scores(
         plot_stuff (bool, optional): Whether to plot the results. Defaults to True.
         query_name (str, optional): The name of the query data. Defaults to "query data".
         category (str, optional): The category column to compare. Defaults to "supercluster_name".
-        n_bins (int, optional): The number of bins for spatial grouping. Defaults to 50.
+        bin_size (int, optional): Bin size in microns for spatial grouping. Defaults to 100.
         in_place (bool, optional): Whether to modify the query data in place. Defaults to True.
         non_spatial (bool, optional): Whether to compare to an ungrouped mean/std. Defaults to False.
 
@@ -122,10 +122,18 @@ def spatial_detection_scores(
             (s2.loc[s2[category] == c, [comparison_column]] / means[c]).values
         )
 
+    # determine number of bins on each axis for grouping the data spatially
+    nx_bins = np.ceil((s2.x_centroid.max() - s2.x_centroid.min()) / bin_size).astype(
+        int
+    )
+    ny_bins = np.ceil((s2.y_centroid.max() - s2.y_centroid.min()) / bin_size).astype(
+        int
+    )
+
     s2["xy_bucket"] = list(
         zip(
-            pd.cut(s2.x_centroid, n_bins, labels=list(range(n_bins))),
-            pd.cut(s2.y_centroid, n_bins, labels=list(range(n_bins))),
+            pd.cut(s2.x_centroid, nx_bins, labels=list(range(nx_bins))),
+            pd.cut(s2.y_centroid, ny_bins, labels=list(range(ny_bins))),
         )
     )
 
@@ -137,10 +145,10 @@ def spatial_detection_scores(
     log_ratio = s2.groupby("xy_bucket").log_10_detection_ratio.mean()
     n_cells = s2.groupby("xy_bucket").x_centroid.count()
 
-    bin_image_z_score = np.zeros([n_bins, n_bins])
-    bin_image_difference = np.zeros([n_bins, n_bins])
-    bin_image_ratio = np.zeros([n_bins, n_bins])
-    bin_image_counts = np.zeros([n_bins, n_bins])
+    bin_image_z_score = np.zeros([nx_bins, ny_bins])
+    bin_image_difference = np.zeros([nx_bins, ny_bins])
+    bin_image_ratio = np.zeros([nx_bins, ny_bins])
+    bin_image_counts = np.zeros([nx_bins, ny_bins])
 
     extent = [np.min(binx), np.max(binx), np.min(biny), np.max(biny)]
     for coord in binx.index:
