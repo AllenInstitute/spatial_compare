@@ -604,9 +604,13 @@ class SpatialCompare:
         col_name_both_filt = (
             "match_" + self.data_names[0] + "_filt_" + self.data_names[1] + "_filt"
         )
-        seg_comp_df[col_name_both_filt] = seg_comp_df.index.map(
-            get_mutual_matches(dfa, dfb, nn_dist)
-        )  # filt both
+        matched_dfa_only, matched_dfb_only = get_mutual_matches(dfa, dfb, nn_dist)
+        seg_comp_df.loc[matched_dfb_only.index.values.tolist(), col_name_both_filt] = (
+            matched_dfb_only.iloc[:, 0]
+        )
+        seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_both_filt] = (
+            matched_dfa_only.iloc[:,0]
+        )
 
         # mutual matches with seg a filtered only
         dfa = seg_comp_df[
@@ -617,9 +621,14 @@ class SpatialCompare:
         col_name_afilt = (
             "match_" + self.data_names[0] + "_filt_" + self.data_names[1] + "_unfilt"
         )
-        seg_comp_df[col_name_afilt] = seg_comp_df.index.map(
-            get_mutual_matches(dfa, dfb, nn_dist)
-        )  # a filt only
+        # dfa filt only
+        matched_dfa_only, matched_dfb_only = get_mutual_matches(dfa, dfb, nn_dist)
+        seg_comp_df.loc[matched_dfb_only.index.values.tolist(), col_name_afilt] = (
+            matched_dfb_only.iloc[:,0]
+        )
+        seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_afilt] = (
+            matched_dfa_only.iloc[:,0]
+        )
 
         # mutual matches with seg b filtered only
         dfa = seg_comp_df[seg_comp_df["source"] == self.data_names[0]]
@@ -630,32 +639,20 @@ class SpatialCompare:
         col_name_bfilt = (
             "match_" + self.data_names[0] + "_unfilt_" + self.data_names[1] + "_filt"
         )
-        seg_comp_df[col_name_bfilt] = seg_comp_df.index.map(
-            get_mutual_matches(dfa, dfb, nn_dist)
-        )  # b filt only
+        # dfa filt only
+        matched_dfa_only, matched_dfb_only = get_mutual_matches(dfa, dfb, nn_dist)
+        seg_comp_df.loc[matched_dfb_only.index.values.tolist(), col_name_bfilt] = (
+            matched_dfb_only.iloc[:,0]
+        )
+        seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_bfilt] = (
+            matched_dfa_only.iloc[:,0]
+        )
 
         # save results
         if save:
-            seg_comp_df.to_csv(
-                savepath
-                + bc
-                + "_seg_comp_df_"
-                + self.data_names[0]
-                + "_and_"
-                + self.data_names[1]
-                + "_populated.csv",
-                index=True,
-            )
-            print(
-                "Saved to: "
-                + savepath
-                + bc
-                + "_seg_comp_df_"
-                + self.data_names[0]
-                + "_and_"
-                + self.data_names[1]
-                + "_populated.csv"
-            )
+            result_path = f"{savepath}{bc}_seg_comp_df_{self.data_names[0]}_and_{self.data_names[1]}_populated.csv"
+            seg_comp_df.to_csv(result_path, index=True)
+            print("Saved to: " + result_path)
         return seg_comp_df
 
     def generate_sankey_diagram(
@@ -1105,47 +1102,6 @@ def get_column_ordering(df, ordered_rows):
     return output
 
 
-def create_seg_comp_df(barcode, seg_name, base_path, min_transcripts):
-    """
-    Gathers related segmentation results to create descriptive dataframe
-    INPUTS
-        barcode: unique identifier, for locating specific segmentation path. String.
-        seg name: descriptor of segmentation, i.e. algo name. String.
-        base path: path to segmentation results
-        min transcripts: minimum number of transcripts needed to define a cell too low quality to be considered for mapping
-    OUTPUTS
-        seg_df: dataframe with segmentation cell xy locations, low quality cell identifier, and source segmentation ID. index is cell IDs + segmentation identifier string
-    """
-    seg_path = Path(base_path).joinpath(barcode)
-    cell_check = [x for x in seg_path.glob("*.csv") if "cellpose" in x.stem]
-    if cell_check:
-        cxg = pd.read_table(
-            str(seg_path) + "/cellpose-cell-by-gene.csv", index_col=0, sep=","
-        )
-        metadata = pd.read_table(
-            str(seg_path) + "/cellpose_metadata.csv", index_col=0, sep=","
-        )
-    else:
-        cxg = pd.read_table(str(seg_path) + "/cell_by_gene.csv", index_col=0, sep=",")
-        meta = ad.read_h5ad(str(seg_path) + "/metadata.h5ad")
-        metadata = meta.obs
-
-    # assemble seg df with filt cells col, xy cols, and seg name
-    high_quality_cells = (
-        cxg.index[np.where((transcripts_per_cell(cxg) >= min_transcripts))[0]]
-        .astype(str)
-        .values.tolist()
-    )
-    seg_df = metadata[["center_x", "center_y"]].copy()
-    seg_df.index = seg_df.index.astype(str)
-    seg_df.loc[:, "source"] = seg_name
-    seg_df.loc[:, "low_quality_cells"] = np.where(
-        seg_df.index.isin(high_quality_cells), False, True
-    )
-    seg_df.index = seg_name + "_" + seg_df.index
-    return seg_df
-
-
 def get_segmentation_data(
     bc,
     anndata_a,
@@ -1183,7 +1139,7 @@ def get_segmentation_data(
             else:
                 seg_h5ad = anndata_b
                 name = seg_name_b
-            df_cols = ["center_x", "center_y", "source"]
+            df_cols = ["center_x", "center_y", "source", "low_quality_cells"]
             # sum across .X to get sum transcripts/cell > 40
             if "low_quality_cells" not in seg_h5ad.obs.columns.tolist():
                 high_quality_cells = [
@@ -1193,13 +1149,13 @@ def get_segmentation_data(
                 ]
                 seg_h5ad.obs["low_quality_cells"] = [True] * len(seg_h5ad.obs)
                 seg_h5ad.obs.iloc[high_quality_cells, -1] = False
-                df_cols.append("low_quality_cells")
             seg_h5ad.obs.loc[:, "source"] = name
             # save only necessary columns
             if "center_x" not in seg_h5ad.obs.columns.tolist():
                 seg_h5ad.obs["center_x"] = seg_h5ad.obsm["spatial"][:, 0]
                 seg_h5ad.obs["center_y"] = seg_h5ad.obsm["spatial"][:, 1]
             seg_df = seg_h5ad.obs[df_cols]
+            seg_df.index = f"{name}_" + seg_df.index
             seg_dfs.append(seg_df)
         seg_comp_df = pd.concat(seg_dfs, axis=0)
         seg_comp_df.index = seg_comp_df.index.astype(str)
@@ -1234,31 +1190,16 @@ def get_mutual_matches(dfa, dfb, nn_dist):
         columns=["match_dfa_index"],
     )
     match_to_dfb["same_cell"] = np.where(dists_a <= nn_dist, True, False)
+    matched_dfb_only = match_to_dfb[match_to_dfb["same_cell"] == True]
+
     match_to_dfa = pd.DataFrame(
-        data=dfa.index,
-        index=pd.Index(dfb.iloc[inds_b].index.values.tolist(), name="match_dfb_index"),
-        columns=["match_dfa_index"],
+        data=dfb.iloc[inds_b].index.values.tolist(),
+        index=pd.Index(dfa.index, name="match_dfa_index"),
+        columns=["match_dfb_index"],
     )
     match_to_dfa["same_cell"] = np.where(dists_b <= nn_dist, True, False)
-    mutual_matches = pd.merge(match_to_dfa, match_to_dfb, how="outer")
-    mutual_matches = mutual_matches.set_index("match_dfa_index").join(
-        match_to_dfa.reset_index().set_index("match_dfa_index"),
-        how="left",
-        rsuffix="_match",
-    )
-    mutual_match_dict = (
-        mutual_matches[mutual_matches["same_cell"] == True]
-        .drop(["same_cell", "same_cell_match"], axis=1)
-        .to_dict()
-    )
-    inv_mutual_match_dict = {
-        v: k for k, v in mutual_match_dict["match_dfb_index"].items()
-    }
-    # added union operwtor to dictionaries in 2020 for 3.9+ (pep 584), discussed https://stackoverflow.com/questions/38987/how-do-i-merge-two-dictionaries-in-a-single-expression-in-python
-    mutual_matches_stacked = (
-        mutual_match_dict["match_dfb_index"] | inv_mutual_match_dict
-    )
-    return mutual_matches_stacked
+    matched_dfa_only = match_to_dfa[match_to_dfa["same_cell"] == True]
+    return matched_dfb_only, matched_dfa_only
 
 
 def create_node_df_sankey(
