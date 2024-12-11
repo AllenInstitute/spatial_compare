@@ -378,3 +378,5 @@ def compare_reference_and_spatial(
     reference_anndata.obs[target_obs_key] = (
         scale_factor * reference_anndata.obs[target_obs_key]
     )
+
+
