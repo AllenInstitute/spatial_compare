@@ -381,61 +381,50 @@ def compare_reference_and_spatial(
         scale_factor * reference_anndata.obs[target_obs_key]
     )
 
-# only works if the user has consistent annotations between the two anndatas
-def returnARI(sc, seg_comp_df, seg_name_a, seg_name_b, annotation_key='annotations'):
-    seg_comp_df['annotations'] = None  # Initialize the column with None or NaN
 
-    # extract the annotations from the anndatas
-    annotations_a = sc.ad_0.obs[annotation_key].tolist()
-    annotations_b = sc.ad_1.obs[annotation_key].tolist()
-
-    # Assign annotations based on the source
-    seg_comp_df.loc[seg_comp_df['source'] == seg_name_a, 'annotations'] = annotations_a
-    seg_comp_df.loc[seg_comp_df['source'] == seg_name_b, 'annotations'] = annotations_b
-
-    # find all the mutually matched cells
-    seg_b_df = seg_comp_df[seg_comp_df['source']==seg_name_b]
-    high_q_b_cells = seg_b_df[seg_b_df['low_quality_cells']==False]
-    matched_indices = high_q_b_cells.iloc[:,4].dropna().copy()
-
-    # create the label lists of the matched cells
-    labels_a = []
-    labels_b = []
-    for index, value in matched_indices.items():
-        labels_a.append(str(seg_comp_df.loc[index]['annotations']))
-        labels_b.append(str(seg_comp_df.loc[value]['annotations']))
-
-    # calculate the ARI and return it
-    ari = adjusted_rand_score(labels_a, labels_b)
-    print(f"Adjusted Rand Index: {ari}")
-    return ari
-
-def get_normalized_Hausdorff(seg_comp_df, seg_name_a, seg_name_b):
-    coords_a = seg_comp_df[seg_comp_df['source']==seg_name_a]
-    coords_b = seg_comp_df[seg_comp_df['source']==seg_name_b]
-
-    plt.scatter(coords_a['center_x'], coords_a['center_y'], color='blue')
-    plt.scatter(coords_b['center_x'], coords_b['center_y'], color='red')
-    plt.show()
-
-    x1 = coords_a['center_x'].to_numpy()
-    y1 = coords_a['center_y'].to_numpy()
-    x2 = coords_b['center_x'].to_numpy()
-    y2 = coords_b['center_y'].to_numpy()
+def calculate_hausdorff_dist(
+    seg_comp_df, anndata_a, anndata_b, comp_col, annotation_col="Class_label"
+):
+    # get class labels for all matched cells for anndata a and b
+    matched_cells_a = (
+        seg_comp_df[seg_comp_df["source"] == self.data_names[0]]
+        .loc[:, comp_col]
+        .dropna()
+        .str.removeprefix(self.data_names[1] + "_")
+        .values.tolist()
+    )
+    matched_cells_b = (
+        seg_comp_df[seg_comp_df["source"] == self.data_names[1]]
+        .loc[:, comp_col]
+        .dropna()
+        .str.removeprefix(self.data_names[0] + "_")
+        .values.tolist()
+    )
+    annotations_a = anndata_a.obs.loc[matched_cells_b, annotation_col]
+    annotations_b = anndata_b.obs.loc[matched_cells_a, annotation_col]
+    ari = adjusted_rand_score(annotations_a, annotations_b)
 
     # Calculate range considering the axis
-    x_coords = np.concatenate((x1, x2))
-    y_coords = np.concatenate((y1, y2))
-    x_data_range = np.max(x_coords) - np.min(x_coords)
-    y_data_range = np.max(y_coords) - np.min(y_coords)
-
-    average_data_range = (x_data_range+y_data_range)/2
-    print(f"Average data range: {average_data_range}")
+    coords_a = seg_comp_df[seg_comp_df["source"] == self.data_names[0]][
+        ["center_x", "center_y"]
+    ].values
+    coords_b = seg_comp_df[seg_comp_df["source"] == self.data_names[1]][
+        ["center_x", "center_y"]
+    ].values
 
     # Calculate Hausdorff distance
-    points1 = np.column_stack((x1, y1))
-    points2 = np.column_stack((x2, y2))
-    hausdorff_dist = distance.directed_hausdorff(points1, points2)[0]
-    print(f"Hausdorff Distance: {hausdorff_dist}")
-    print(f"Hausdorff Distance normalized to range (%): {(hausdorff_dist/average_data_range)*100}")
-    return ((hausdorff_dist/average_data_range)*100)
+    hausdorff_dist = round(distance.directed_hausdorff(coords_a, coords_b)[0], 3)
+
+    plt.figure()
+    plt.scatter(
+        coords_a[:, 0], coords_a[:, 1], color="blue", s=1, label=self.data_names[0]
+    )
+    plt.scatter(
+        coords_b[:, 0], coords_b[:, 1], color="red", s=1, label=self.data_names[1]
+    )
+    plt.title(f" Hausdorff Distance: {hausdorff_dist}")
+    plt.legend(bbox_to_anchor=[1.05, 1.0])
+    plt.xlabel("spatial x coords")
+    plt.ylabel("spatial y coords")
+    plt.show()
+    return hausdorff_dist

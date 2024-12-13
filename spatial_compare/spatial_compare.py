@@ -10,10 +10,10 @@ from scipy.spatial import cKDTree, distance
 from pathlib import Path
 import plotly.graph_objs as go
 from matplotlib.ticker import FormatStrFormatter
-from sklearn.metrics import adjusted_rand_score
+
 import warnings
 
-from spatial_compare.utils import grouped_obs_mean, returnARI, get_normalized_Hausdorff
+from spatial_compare.utils import grouped_obs_mean
 
 
 DEFAULT_DATA_NAMES = ["Data 0", "Data 1"]
@@ -734,8 +734,9 @@ class SpatialCompare:
                 + ".png"
             )
             fig.write_image(filepath)
+            return fig, unknown_unmatched_cells, filepath
         fig.show()
-        return fig, unknown_unmatched_cells, filepath
+        return fig, unknown_unmatched_cells
 
     def scaling_check(self, seg_comp_df):
         """
