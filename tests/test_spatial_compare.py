@@ -11,8 +11,8 @@ DATA_STEMS = [
     "CJ_BG_mini2.h5ad",
     "CJ_BG_mini3.h5ad",
     "CJ_BG_mini4.h5ad",
-    "sc_eg_mini_a.h5ad",
-    "sc_eg_mini_a.h5ad",
+    "sc_mtg_mini_a.h5ad",
+    "sc_mtg_mini_a.h5ad",
 ]
 
 TEST_DIR = SC_DIR.joinpath("tests").joinpath("data")
