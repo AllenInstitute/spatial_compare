@@ -627,7 +627,7 @@ class SpatialCompare:
             matched_dfb_only.iloc[:, 0]
         )
         seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_both_filt] = (
-            matched_dfa_only.iloc[:,0]
+            matched_dfa_only.iloc[:, 0]
         )
 
         # mutual matches with seg a filtered only
@@ -642,10 +642,10 @@ class SpatialCompare:
         # dfa filt only
         matched_dfa_only, matched_dfb_only = get_mutual_matches(dfa, dfb, nn_dist)
         seg_comp_df.loc[matched_dfb_only.index.values.tolist(), col_name_afilt] = (
-            matched_dfb_only.iloc[:,0]
+            matched_dfb_only.iloc[:, 0]
         )
         seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_afilt] = (
-            matched_dfa_only.iloc[:,0]
+            matched_dfa_only.iloc[:, 0]
         )
 
         # mutual matches with seg b filtered only
@@ -660,10 +660,10 @@ class SpatialCompare:
         # dfa filt only
         matched_dfa_only, matched_dfb_only = get_mutual_matches(dfa, dfb, nn_dist)
         seg_comp_df.loc[matched_dfb_only.index.values.tolist(), col_name_bfilt] = (
-            matched_dfb_only.iloc[:,0]
+            matched_dfb_only.iloc[:, 0]
         )
         seg_comp_df.loc[matched_dfa_only.index.values.tolist(), col_name_bfilt] = (
-            matched_dfa_only.iloc[:,0]
+            matched_dfa_only.iloc[:, 0]
         )
 
         # save results
