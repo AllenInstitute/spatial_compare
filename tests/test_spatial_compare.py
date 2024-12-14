@@ -50,7 +50,7 @@ def test_segmentation_comparison():
         obsm_key="spatial",
     )
     seg_comp_df = sc.collect_mutual_match_and_doublets(
-        bc="1370519421", save=False, reuse_saved=False, savepath=TEST_DIR
+        bc="1370519421", save=False, reuse_saved=False, savepath=str(TEST_DIR)
     )
     seg_a_df = seg_comp_df[seg_comp_df["source"] == TEST_SEG_NAMES[0]]
     seg_b_df = seg_comp_df[seg_comp_df["source"] == TEST_SEG_NAMES[1]]
