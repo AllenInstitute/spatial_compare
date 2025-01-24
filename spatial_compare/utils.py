@@ -3,6 +3,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.spatial import distance
+from sklearn.metrics import adjusted_rand_score
 import scipy as sp
 
 
@@ -492,3 +494,51 @@ def compare_reference_and_spatial(
     reference_anndata.obs[target_obs_key] = (
         scale_factor * reference_anndata.obs[target_obs_key]
     )
+
+
+def calculate_hausdorff_dist(
+    seg_comp_df, anndata_a, anndata_b, comp_col, annotation_col="Class_label"
+):
+    # get class labels for all matched cells for anndata a and b
+    matched_cells_a = (
+        seg_comp_df[seg_comp_df["source"] == self.data_names[0]]
+        .loc[:, comp_col]
+        .dropna()
+        .str.removeprefix(self.data_names[1] + "_")
+        .values.tolist()
+    )
+    matched_cells_b = (
+        seg_comp_df[seg_comp_df["source"] == self.data_names[1]]
+        .loc[:, comp_col]
+        .dropna()
+        .str.removeprefix(self.data_names[0] + "_")
+        .values.tolist()
+    )
+    annotations_a = anndata_a.obs.loc[matched_cells_b, annotation_col]
+    annotations_b = anndata_b.obs.loc[matched_cells_a, annotation_col]
+    ari = adjusted_rand_score(annotations_a, annotations_b)
+
+    # Calculate range considering the axis
+    coords_a = seg_comp_df[seg_comp_df["source"] == self.data_names[0]][
+        ["center_x", "center_y"]
+    ].values
+    coords_b = seg_comp_df[seg_comp_df["source"] == self.data_names[1]][
+        ["center_x", "center_y"]
+    ].values
+
+    # Calculate Hausdorff distance
+    hausdorff_dist = round(distance.directed_hausdorff(coords_a, coords_b)[0], 3)
+
+    plt.figure()
+    plt.scatter(
+        coords_a[:, 0], coords_a[:, 1], color="blue", s=1, label=self.data_names[0]
+    )
+    plt.scatter(
+        coords_b[:, 0], coords_b[:, 1], color="red", s=1, label=self.data_names[1]
+    )
+    plt.title(f" Hausdorff Distance: {hausdorff_dist}")
+    plt.legend(bbox_to_anchor=[1.05, 1.0])
+    plt.xlabel("spatial x coords")
+    plt.ylabel("spatial y coords")
+    plt.show()
+    return hausdorff_dist
