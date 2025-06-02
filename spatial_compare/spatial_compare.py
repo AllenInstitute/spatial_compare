@@ -67,8 +67,8 @@ class SpatialCompare:
     compare_expression(category_values=[], plot_stuff=False, min_mean_expression=.2, min_genes_to_compare=5, min_cells=10, ntop_genes=20)
         Compare gene expression between the two datasets.
 
-    run_and_plot(category_values = d1d2_cells, min_mean_expression=.2, ntop_genes=20, filtred=True, dot_size=)
-        Run all the plots, can select the genes to appear the label (ntop_genes), choose to filter 25 bottom, middle and top genes in the boxplot (filtred=True). Can choose the size of dots of spatial plot (dot_size=(3*18231)/(self.ad_0.n_obs)).
+    run_and_plot(category_values = d1d2_cells, min_mean_expression=.2, ntop_genes=20, filtered=True, dot_size=)
+        Run all the plots, can select the genes to appear the label (ntop_genes), choose to filter 25 bottom, middle and top genes in the boxplot (filtered=True). Can choose the size of dots of spatial plot (dot_size=(3*18231)/(self.ad_0.n_obs)).
 
     """
 
@@ -560,12 +560,12 @@ class SpatialCompare:
             "gene_ratio_dataframe": gene_ratio_df,
         }
 
-    def plot_detection_ratio(self, gene_ratio_dataframe, figsize=[15, 15]):
+    def plot_detection_ratio(self, gene_ratio_dataframe, figsize=[15, 15],filtered=True):
         detection_ratio_plots(
             gene_ratio_dataframe,
             data_names=self.data_names,
             figsize=figsize,
-            filtred=filtred,
+            filtered=filtered,
         )
 
     def spatial_compare(self, **kwargs):
@@ -605,14 +605,14 @@ class SpatialCompare:
             self.set_category(kwargs["category"])
         dot_size = kwargs.get("dot_size", None)
         ntop_genes = kwargs.get("ntop_genes", 20)
-        filtred = kwargs.get("filtred", True)
+        filtered = kwargs.get("filtered", True)
 
         self.spatial_plot(dot_size=dot_size)
         self.spatial_compare_results = self.spatial_compare(plot_stuff=True, **kwargs)
         self.plot_detection_ratio(
             self.spatial_compare_results["expression_results"]["gene_ratio_dataframe"],
             figsize=[30, 20],
-            filtred=filtred,
+            filtered=filtered,
         )
         return True
 
@@ -967,7 +967,7 @@ def detection_ratio_plots(
     gene_ratio_df,
     data_names=DEFAULT_DATA_NAMES,
     figsize=[15, 15],
-    filtred=True,
+    filtered=True,
 ):
 
     sorted_genes = [
@@ -981,7 +981,7 @@ def detection_ratio_plots(
 
     # Combine selected ratios for plotting
     selected_ratios = bottom_25 + middle_25 + top_25
-    if filtred:
+    if filtered:
         genes_boxplot = selected_ratios
     else:
         genes_boxplot = sorted_genes
@@ -997,7 +997,7 @@ def detection_ratio_plots(
         "detection ratio\n" + data_names[1] + " / " + data_names[0], fontsize=20
     )
     ax = plt.gca()
-    if filtred:
+    if filtered:
         ax.tick_params(axis="x", labelrotation=45, labelsize=18)
     else:
         ax.tick_params(axis="x", labelrotation=45, labelsize=10)
