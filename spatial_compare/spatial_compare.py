@@ -560,7 +560,7 @@ class SpatialCompare:
             "gene_ratio_dataframe": gene_ratio_df,
         }
 
-    def plot_detection_ratio(self, gene_ratio_dataframe, figsize=[15, 15]):
+    def plot_detection_ratio(self, gene_ratio_dataframe, figsize=[15, 15],filtred=filtred):
         detection_ratio_plots(
             gene_ratio_dataframe,
             data_names=self.data_names,
