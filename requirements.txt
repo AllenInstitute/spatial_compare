@@ -72,7 +72,7 @@ fonttools==4.53.1
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema
-h11==0.14.0
+h11==0.16.0
     # via httpcore
 h5py==3.11.0
     # via
