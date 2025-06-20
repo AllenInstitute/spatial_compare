@@ -152,6 +152,8 @@ def spatial_detection_scores(
     non_spatial: bool = False,
     use_kde: bool = False,
     mask: float = 0.0,
+    z_score_limits = [-2,2],
+    dont_return_inputs = True,
 ):
     """
     Calculate and plot spatial detection scores for query data compared to reference data.
@@ -258,7 +260,7 @@ def spatial_detection_scores(
         else:
             title_string = "Spatial Detection Scores"
         min_maxes = {
-            "detection z-score": [bin_image_z_score, [-2, 2]],
+            "detection z-score": [bin_image_z_score, z_score_limits],
             "total counts difference": [bin_image_difference, [-100, 100]],
             "log10(detection ratio)": [bin_image_ratio, [-1, 1]],
         }
@@ -314,7 +316,7 @@ def spatial_detection_scores(
     if use_kde:
         ret["z_score_estimator"] = estimator
 
-    if in_place:
+    if in_place or dont_return_inputs:
         return ret
     else:
         ret["query"] = s2
@@ -459,9 +461,9 @@ def compare_reference_and_spatial(
         .groupby(category, observed=True)
         .mean()
     )
-    means["spatial_counts"] = 0.0
+    means["spatial_counts"] = -1
 
-    for name in spatial_anndata.obs[category].unique():
+    for name,gb in spatial_anndata.obs.groupby(category,observed=True):
         means.loc[name, ["spatial_counts"]] = (
             spatial_anndata.obs.loc[
                 spatial_anndata.obs[category] == name, [target_obs_key]
@@ -469,10 +471,14 @@ def compare_reference_and_spatial(
             .mean()
             .values[0]
         )
-
-    fit_values = np.polyfit(means.spatial_counts, means[target_obs_key], 1)
-
-    scale_factor = 1 / fit_values[0]
+    means = means.loc[means.spatial_counts != -1,:]
+    
+    try:
+        fit_values = np.polyfit(means.spatial_counts, means[target_obs_key], 1)
+        scale_factor = 1/fit_values[0]
+    except:
+        print( "failed to fit counts data! using ratio of means")
+        scale_factor = np.mean(means.spatial_counts)/ np.mean(means[target_obs_key])
     if plot_stuff:
         plt.figure()
         plt.plot(means.spatial_counts, means[target_obs_key], ".")
@@ -492,3 +498,4 @@ def compare_reference_and_spatial(
     reference_anndata.obs[target_obs_key] = (
         scale_factor * reference_anndata.obs[target_obs_key]
     )
+    return means
