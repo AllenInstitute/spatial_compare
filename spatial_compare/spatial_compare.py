@@ -13,6 +13,7 @@ from matplotlib.ticker import FormatStrFormatter
 import warnings
 
 from spatial_compare.utils import grouped_obs_mean
+from sklearn.linear_model import RANSACRegressor, LinearRegression
 
 DEFAULT_DATA_NAMES = ["Data 0", "Data 1"]
 TARGET_LEGEND_MARKER_SIZE = 20
@@ -64,11 +65,11 @@ class SpatialCompare:
         Perform de novo clustering on the two datasets.
     find_matched_groups(n_top_groups=100, n_shared_groups=30, min_n_cells=100, category_values=[], exclude_group_string="zzzzzzzzzzzzzzz", plot_stuff=False, figsize=[10,10])
         Find matched groups between the two datasets.
-    compare_expression(category_values=[], plot_stuff=False, min_mean_expression=.2, min_genes_to_compare=5, min_cells=10, ntop_genes=20)
+    compare_expression(category_values=[], plot_stuff=False, min_mean_expression=.2, min_genes_to_compare=5, min_cells=10, n_top_genes=20)
         Compare gene expression between the two datasets.
 
-    run_and_plot(category_values = d1d2_cells, min_mean_expression=.2, ntop_genes=20, filtered=True, dot_size=)
-        Run all the plots, can select the genes to appear the label (ntop_genes), choose to filter 25 bottom, middle and top genes in the boxplot (filtered=True). Can choose the size of dots of spatial plot (dot_size=(3*18231)/(self.ad_0.n_obs)).
+    run_and_plot(category_values = d1d2_cells, min_mean_expression=.2, n_top_genes=20, filtered=True, dot_size=)
+        Run all the plots, can select the genes to appear the label (n_top_genes), choose to filter 25 bottom, middle and top genes in the boxplot (filtered=True). Can choose the size of dots of spatial plot (dot_size=(3*18231)/(self.ad_0.n_obs)).
 
     """
 
@@ -391,7 +392,8 @@ class SpatialCompare:
         min_mean_expression=0.2,
         min_genes_to_compare=5,
         min_cells=10,
-        ntop_genes=20,
+        n_top_genes=20,
+        outlier_detection=True,
     ):
         # Group cells
         if len(category_values) == 0:
@@ -472,24 +474,39 @@ class SpatialCompare:
             # Calculate average counts for selecting top genes
             average_counts = (means_0 + means_1) / 2
 
-            # Get indices of the top 20 genes based on average counts for this subclass
-            top_indices = np.argsort(average_counts)[
-                -ntop_genes:
-            ]  # Get indices of top 10 genes
+            # Get indices of the n_top_genes genes based on average counts for this subclass
+            top_indices = np.argsort(average_counts)[-n_top_genes:]
 
             shared_genes = shared_above_mean
 
             p_coef = np.polynomial.Polynomial.fit(means_0, means_1, 1).convert().coef
+            # Fit RANSAC to detect outliers in log10(means_0) vs log10(means_1)
+            outlier_mask = np.array([False] * len(shared_genes))
+            if outlier_detection:
+                ransac = RANSACRegressor(LinearRegression(), random_state=0)
+                X = np.log10(means_0.reshape(-1, 1))
+                y = np.log10(means_1)
+                ransac.fit(X, y)
+                inlier_mask = ransac.inlier_mask_
+                outlier_mask = np.logical_not(inlier_mask)
+                # inlier fit:
+            if outlier_detection:
+                inlier_fit = ransac.estimator_.coef_[0]
+            else:
+                inlier_fit = None
+
             category_records.append(
                 {
                     self.category: category_value,
                     "slope": p_coef[1],
+                    "inlier_slope": inlier_fit,
                     "mean_ratio": np.mean(means_1 / means_0),
                     "correlation": np.corrcoef(means_0, means_1)[0][1],
                     "n_cells_0": np.sum(group_mask_0),
                     "n_cells_1": np.sum(group_mask_1),
                     "total_count_ratio": np.sum(self.ad_1[group_mask_1, shared_genes].X)
                     / np.sum(self.ad_0[group_mask_0, shared_genes].X),
+                    "outliers": np.array(shared_genes)[outlier_mask].tolist(),
                 }
             )
 
@@ -509,9 +526,15 @@ class SpatialCompare:
                     + str(category_records[-1]["correlation"])[:4]
                     + " mean ratio: "
                     + str(category_records[-1]["mean_ratio"])[:4]
+                    + "\n fit slope: "
+                    + str(category_records[-1]["slope"])[:5]
+                    + " inlier fit slope: "
+                    + str(category_records[-1]["inlier_slope"])[:5]
                 )
 
-                low_expression = np.logical_and(means_0 < 1.0, means_1 < 1.0)
+                low_expression = np.logical_and(
+                    means_0 < min_mean_expression, means_1 < min_mean_expression
+                )
                 plt.loglog(
                     means_0[low_expression],
                     means_1[low_expression],
@@ -527,7 +550,7 @@ class SpatialCompare:
                 plt.xlabel(self.data_names[0] + ", N = " + str(np.sum(group_mask_0)))
                 plt.ylabel(self.data_names[1] + ", N = " + str(np.sum(group_mask_1)))
 
-                # Add labels only for the top 20 genes based on average counts for this subclass
+                # Add labels only for the top genes based on average counts for this subclass
                 for idx in top_indices:
                     g = shared_genes[idx] if idx < len(shared_genes) else None
 
@@ -536,12 +559,17 @@ class SpatialCompare:
                     ):
                         continue
 
-                    plt.text(
-                        means_0[idx],
-                        means_1[idx],
-                        g,
-                        fontsize=10,
-                    )
+                    if g in category_records[-1]["outliers"]:
+                        plt.text(
+                            means_0[idx], means_1[idx], g, fontsize=10, color="red"
+                        )
+                    else:
+                        plt.text(
+                            means_0[idx],
+                            means_1[idx],
+                            g,
+                            fontsize=10,
+                        )
 
                 plt.plot(
                     [np.min(means_0), np.max(means_0)],
@@ -606,9 +634,10 @@ class SpatialCompare:
         if "category" in kwargs.keys():
             self.set_category(kwargs["category"])
         dot_size = kwargs.get("dot_size", None)
-        ntop_genes = kwargs.get("ntop_genes", 20)
+        n_top_genes = kwargs.get("n_top_genes", 20)
         filtered = kwargs.get("filtered", True)
 
+        kwargs["n_top_genes"] = n_top_genes
         self.spatial_plot(dot_size=dot_size)
         self.spatial_compare_results = self.spatial_compare(plot_stuff=True, **kwargs)
         self.plot_detection_ratio(

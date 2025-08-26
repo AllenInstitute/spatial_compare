@@ -12,7 +12,7 @@ python = "^3.9"
 
 [project]
 name = "spatial_compare"
-version = "0.1"
+version = "0.3.0"
 description = "A package for comparing spatial transcriptomics datasets"
 readme = "README.md"
 requires-python = ">=3.9"
