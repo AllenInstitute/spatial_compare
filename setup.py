@@ -17,6 +17,6 @@ setuptools.setup(
         "kaleido",
     ],
     include_package_data=True,
-    version="0.2",
+    version="0.3.0",
     python_requires=">=3.9",
 )
