@@ -49,9 +49,11 @@ def grouped_obs_mean(adata, group_key, layer=None, gene_symbols=None):
     return out
 
 
-def spatial_detection_score_kde(query: pd.DataFrame, grid_out: int = 100):
-    cell_x = query["x_centroid"]
-    cell_y = query["y_centroid"]
+def spatial_detection_score_kde(
+    query: pd.DataFrame, grid_out: int = 100, xy_columns: list = ["x_centroid", "y_centroid"]
+):
+    cell_x = query[xy_columns[0]]
+    cell_y = query[xy_columns[1]]
     cell_coords = np.vstack([cell_x.values, cell_y.values])
 
     xmin, xmax = cell_x.min(), cell_x.max()
@@ -103,21 +105,23 @@ def spatial_detection_score_kde(query: pd.DataFrame, grid_out: int = 100):
 def spatial_detection_score_binned(
     query: pd.DataFrame,
     n_bins: int = 50,
+    xy_columns: list = ["x_centroid", "y_centroid"],
 ):
+    x_col, y_col = xy_columns
     query["xy_bucket"] = list(
         zip(
-            pd.cut(query.x_centroid, n_bins, labels=list(range(n_bins))),
-            pd.cut(query.y_centroid, n_bins, labels=list(range(n_bins))),
+            pd.cut(query[x_col], n_bins, labels=list(range(n_bins))),
+            pd.cut(query[y_col], n_bins, labels=list(range(n_bins))),
         )
     )
 
-    binx = query.groupby("xy_bucket").x_centroid.mean()
-    biny = query.groupby("xy_bucket").y_centroid.mean()
+    binx = query.groupby("xy_bucket")[x_col].mean()
+    biny = query.groupby("xy_bucket")[y_col].mean()
 
     z_score = query.groupby("xy_bucket").detection_relative_z_score.mean()
     difference = query.groupby("xy_bucket").detection_difference.mean()
     log_ratio = query.groupby("xy_bucket").log_10_detection_ratio.mean()
-    n_cells = query.groupby("xy_bucket").x_centroid.count()
+    n_cells = query.groupby("xy_bucket")[x_col].count()
 
     bin_image_z_score = np.zeros([n_bins, n_bins])
     bin_image_difference = np.zeros([n_bins, n_bins])
@@ -141,70 +145,72 @@ def spatial_detection_score_binned(
 
 
 def spatial_detection_scores(
-    reference: pd.DataFrame,
     query: pd.DataFrame,
+    precalculated_means: pd.Series,
+    precalculated_stds: pd.Series,
     plot_stuff: bool = True,
     query_name: str = "query data",
     comparison_column: str = "transcript_counts",
     category: str = "supercluster_name",
     n_bins: int = 50,
-    in_place: bool = True,
     non_spatial: bool = False,
     use_kde: bool = False,
     mask: float = 0.0,
+    xy_columns: list = ["x_centroid", "y_centroid"],
 ):
     """
-    Calculate and plot spatial detection scores for query data compared to reference data.
+    Calculate and plot spatial detection scores for query data compared to precomputed reference statistics.
 
     Parameters:
-        reference (pd.DataFrame): The reference data.
         query (pd.DataFrame): The query data.
+        precalculated_means (pd.Series): Per-category means of `comparison_column`, indexed by `category`.
+        precalculated_stds (pd.Series): Per-category stdevs of `comparison_column`, indexed by `category`.
         plot_stuff (bool, optional): Whether to plot the results. Defaults to True.
         query_name (str, optional): The name of the query data. Defaults to "query data".
         category (str, optional): The category column to compare. Defaults to "supercluster_name".
         n_bins (int, optional): The number of bins for spatial grouping. Defaults to 50.
-        in_place (bool, optional): Whether to modify the query data in place. Defaults to True.
         non_spatial (bool, optional): Whether to compare to an ungrouped mean/std. Defaults to False.
         use_kde (bool, optional): Whether to use kernel-density estimates instead of taking binned averages. Samples the KDE on a `n_bins` square grid for plotting, unless `n_bins == 0` (in which case it will be sampled at the cell coordinates). Defaults to False.
         mask (float, optional): A quantile at which to create binary masks from. Defaults to 0.0 (do not binarize).
+        xy_columns (list, optional): Column names for the x and y spatial coordinates. Defaults to ["x_centroid", "y_centroid"].
 
     Returns:
-        dict: A dictionary containing the bin image, extent, query data, and reference data (if in_place is False).
+        dict: A dictionary containing the bin image, extent, and a "detection_scores" dataframe
+        (per-cell z-score/difference/ratio columns, indexed like the filtered query) that the caller
+        can join back onto their own query dataframe.
     """
-    if category not in reference.columns or category not in query.columns:
-        raise ValueError("category " + category + " not in reference and query inputs")
+    if category not in query.columns:
+        raise ValueError("category " + category + " not in query input")
 
     shared_category_values = list(
-        set(reference[category].unique()) & set(query[category].unique())
+        set(precalculated_means.index) & set(query[category].unique())
     )
-    if in_place and (
-        len(shared_category_values) < query[category].unique().shape[0]
-        or len(shared_category_values) < reference[category].unique().shape[0]
-    ):
+    if len(shared_category_values) < query[category].unique().shape[0]:
         print(
-            "Query and reference datasets had different shapes. Objects will not be modified in place"
+            "Query has category values not present in the precalculated means/stds. Those rows will be excluded."
         )
-        in_place = False
 
-    if in_place:
-        s2 = query.loc[query[category].isin(shared_category_values), :]
-        s1 = reference.loc[reference[category].isin(shared_category_values), :]
-    else:
-        s2 = query.loc[query[category].isin(shared_category_values), :].copy()
-        s1 = reference.loc[reference[category].isin(shared_category_values), :].copy()
+    s2 = query.loc[query[category].isin(shared_category_values), :]
 
-    means = s1.groupby(category, observed=True)[comparison_column].mean()
-    stds = s1.groupby(category, observed=True)[comparison_column].std()
+    means = precalculated_means
+    stds = precalculated_stds
 
     # if you want to compare to an ungrouped mean/std, try this:
     if non_spatial:
         means[:] = means.mean()
         stds[:] = stds.mean()
 
-    s2["detection_relative_z_score"] = 0.0
-    s2["detection_difference"] = 0.0
-    s2["detection_ratio"] = 0.0
-    s2["log_10_detection_ratio"] = 0.0
+    # score columns are computed into their own dataframe so the (potentially large) query is never copied or mutated
+    detection_scores = pd.DataFrame(
+        0.0,
+        index=s2.index,
+        columns=[
+            "detection_relative_z_score",
+            "detection_difference",
+            "detection_ratio",
+            "log_10_detection_ratio",
+        ],
+    )
 
     for c, gb in s2.groupby(category, observed=True):
         if c not in shared_category_values:
@@ -212,18 +218,20 @@ def spatial_detection_scores(
 
         indices = s2[category] == c
 
-        s2.loc[indices, ["detection_relative_z_score"]] = (
+        detection_scores.loc[indices, ["detection_relative_z_score"]] = (
             (s2.loc[indices, [comparison_column]] - means[c]) / stds[c]
         ).values
-        s2.loc[indices, ["detection_difference"]] = (
+        detection_scores.loc[indices, ["detection_difference"]] = (
             s2.loc[indices, [comparison_column]] - means[c]
         ).values
-        s2.loc[indices, ["detection_ratio"]] = (
-            s2.loc[indices, [comparison_column]] / means[c]
+        detection_scores.loc[indices, ["detection_ratio"]] = (
+            (s2.loc[indices, [comparison_column]] + 1e-5) / means[c]
         ).values
-        s2.loc[indices, ["log_10_detection_ratio"]] = np.log10(
-            s2.loc[indices, ["detection_ratio"]].values
+        detection_scores.loc[indices, ["log_10_detection_ratio"]] = np.log10(
+            detection_scores.loc[indices, ["detection_ratio"]].values
         )
+
+    binning_input = pd.concat([s2[xy_columns], detection_scores], axis=1)
 
     if not use_kde:
         (
@@ -232,7 +240,7 @@ def spatial_detection_scores(
             bin_image_difference,
             bin_image_ratio,
             bin_image_counts,
-        ) = spatial_detection_score_binned(s2, n_bins)
+        ) = spatial_detection_score_binned(binning_input, n_bins, xy_columns=xy_columns)
     else:
         (
             estimator,
@@ -240,7 +248,7 @@ def spatial_detection_scores(
             bin_image_z_score,
             bin_image_difference,
             bin_image_ratio,
-        ) = spatial_detection_score_kde(s2, n_bins)
+        ) = spatial_detection_score_kde(binning_input, n_bins, xy_columns=xy_columns)
         # FIXME: not computing this
         bin_image_counts = np.zeros(bin_image_ratio.shape)
 
@@ -293,8 +301,8 @@ def spatial_detection_scores(
                 )
             else:
                 pcm = ax.scatter(
-                    s2.x_centroid.values,
-                    -s2.y_centroid.values,
+                    s2[xy_columns[0]].values,
+                    -s2[xy_columns[1]].values,
                     c=min_maxes[plot_name][0],
                     cmap=cmap,
                 )
@@ -307,19 +315,13 @@ def spatial_detection_scores(
         ratio_image=bin_image_ratio,
         extent=extent,
         count_image=bin_image_counts,
-        query=True,
-        reference=True,
+        detection_scores=detection_scores,
     )
 
     if use_kde:
         ret["z_score_estimator"] = estimator
 
-    if in_place:
-        return ret
-    else:
-        ret["query"] = s2
-        ret["reference"] = s1
-        return ret
+    return ret
 
 
 def summarize_and_plot(
