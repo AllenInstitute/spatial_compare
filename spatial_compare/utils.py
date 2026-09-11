@@ -50,7 +50,9 @@ def grouped_obs_mean(adata, group_key, layer=None, gene_symbols=None):
 
 
 def spatial_detection_score_kde(
-    query: pd.DataFrame, grid_out: int = 100, xy_columns: list = ["x_centroid", "y_centroid"]
+    query: pd.DataFrame,
+    grid_out: int = 100,
+    xy_columns: list = ["x_centroid", "y_centroid"],
 ):
     cell_x = query[xy_columns[0]]
     cell_y = query[xy_columns[1]]
