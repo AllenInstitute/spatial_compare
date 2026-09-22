@@ -60,8 +60,8 @@ def _strong_loss_data():
 
 def _lower_right_mask(adata):
     coordinates = adata.obs[["x_centroid", "y_centroid"]].to_numpy()
-    normalized_coordinates = (
-        (coordinates - coordinates.min(axis=0)) / np.ptp(coordinates, axis=0)
+    normalized_coordinates = (coordinates - coordinates.min(axis=0)) / np.ptp(
+        coordinates, axis=0
     )
     return np.all(
         np.abs(normalized_coordinates - np.array([0.8, 0.2])) <= 0.2,
@@ -106,7 +106,9 @@ def test_spatial_detection_scores_detect_strong_loss():
 
     z_scores = results["detection_scores"]["detection_relative_z_score"]
     affected_index = strong_loss_data.obs_names[affected].intersection(z_scores.index)
-    unaffected_index = strong_loss_data.obs_names[~affected].intersection(z_scores.index)
+    unaffected_index = strong_loss_data.obs_names[~affected].intersection(
+        z_scores.index
+    )
 
     affected_mean = z_scores.loc[affected_index].mean()
     unaffected_mean = z_scores.loc[unaffected_index].mean()
