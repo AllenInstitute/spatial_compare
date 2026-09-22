@@ -496,3 +496,114 @@ def compare_reference_and_spatial(
     reference_anndata.obs[target_obs_key] = (
         scale_factor * reference_anndata.obs[target_obs_key]
     )
+
+
+def create_test_data_from_spatial(
+    spatial_anndata,
+    obs_key,
+    spatial_coords=("x", "y"),
+    shape="square",
+    size=0.25,
+    location="center",
+    loss_factor=0.8,
+    noise_factor=0.01,
+    loss_category_values=None,
+    loss_genes=None,
+):
+    """Create a copy with reduced detection in a spatially defined region.
+
+    The spatial coordinates are normalized to their bounding box before the
+    region is selected. ``size`` is therefore the square side or circle
+    diameter as a fraction of that box. If provided, ``loss_category_values``
+    further restricts affected observations by values in ``obs_key``. An empty
+    ``loss_genes`` affects every gene.
+
+    Affected counts are sampled independently with mean
+    ``loss_factor * original_count`` and standard deviation
+    ``noise_factor * original_count``, then clipped at zero.
+    """
+    valid_shapes = {"square", "circle"}
+    valid_locations = {
+        "center": (0.5, 0.5),
+        "upper-left": (size / 2, 1 - size / 2),
+        "lower-right": (1 - size / 2, size / 2),
+        "upper-right": (1 - size / 2, 1 - size / 2),
+        "lower-left": (size / 2, size / 2),
+    }
+
+    if shape not in valid_shapes:
+        raise ValueError(f"shape must be one of {sorted(valid_shapes)}")
+    if location not in valid_locations:
+        raise ValueError(f"location must be one of {list(valid_locations)}")
+    if not 0 < size <= 1:
+        raise ValueError("size must be greater than 0 and no greater than 1")
+    if loss_factor < 0 or noise_factor < 0:
+        raise ValueError("loss_factor and noise_factor must be non-negative")
+    if len(spatial_coords) != 2:
+        raise ValueError("spatial_coords must contain exactly two column names")
+
+    missing_coords = [c for c in spatial_coords if c not in spatial_anndata.obs]
+    if missing_coords:
+        raise ValueError(f"spatial coordinate columns not found: {missing_coords}")
+
+    loss_category_values = (
+        [] if loss_category_values is None else list(loss_category_values)
+    )
+    loss_genes = [] if loss_genes is None else list(loss_genes)
+    if loss_category_values and obs_key not in spatial_anndata.obs:
+        raise ValueError(f"obs_key not found: {obs_key}")
+
+    missing_genes = [
+        gene for gene in loss_genes if gene not in spatial_anndata.var_names
+    ]
+    if missing_genes:
+        raise ValueError(f"genes not found: {missing_genes}")
+
+    coords = spatial_anndata.obs.loc[:, list(spatial_coords)].to_numpy(dtype=float)
+    coord_min = coords.min(axis=0)
+    coord_range = coords.max(axis=0) - coord_min
+    if np.any(coord_range == 0):
+        raise ValueError("spatial coordinate columns must each span a non-zero range")
+
+    normalized_coords = (coords - coord_min) / coord_range
+    region_center = np.asarray(valid_locations[location])
+    offset = normalized_coords - region_center
+    if shape == "square":
+        spatial_mask = np.all(np.abs(offset) <= size / 2, axis=1)
+    else:
+        spatial_mask = np.sum(offset**2, axis=1) <= (size / 2) ** 2
+
+    if loss_category_values:
+        spatial_mask &= (
+            spatial_anndata.obs[obs_key].isin(loss_category_values).to_numpy()
+        )
+
+    gene_indices = (
+        np.arange(spatial_anndata.n_vars)
+        if not loss_genes
+        else spatial_anndata.var_names.get_indexer(loss_genes)
+    )
+    observation_indices = np.flatnonzero(spatial_mask)
+    test_data = spatial_anndata.copy()
+
+    if observation_indices.size and gene_indices.size:
+        if sp.sparse.issparse(test_data.X):
+            counts = test_data.X.toarray().astype(float, copy=False)
+        else:
+            counts = np.asarray(test_data.X, dtype=float).copy()
+
+        original_counts = counts[np.ix_(observation_indices, gene_indices)]
+        noisy_counts = np.random.normal(
+            loss_factor * original_counts,
+            noise_factor * original_counts,
+        )
+        counts[np.ix_(observation_indices, gene_indices)] = np.clip(
+            noisy_counts, 0, None
+        )
+
+        if sp.sparse.issparse(test_data.X):
+            test_data.X = test_data.X.__class__(counts)
+        else:
+            test_data.X = counts
+
+    return test_data
